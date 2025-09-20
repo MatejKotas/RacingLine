@@ -1,0 +1,5 @@
+.DS_Store
+env
+blender-bezier-exporter-main
+satellite-imagery-downloader
+*.blend1
