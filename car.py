@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
-class Car(dataclass):
+@dataclass
+class Car:
     name: str
     power: float
     braking: float
