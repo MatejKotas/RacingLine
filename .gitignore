@@ -3,3 +3,4 @@ env
 blender-bezier-exporter-main
 satellite-imagery-downloader
 *.blend1
+__pycache__
