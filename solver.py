@@ -1,6 +1,6 @@
-import numpy as np
 import matplotlib.pyplot as plt
 import math
+import torch
 
 from car import Car
 
@@ -19,7 +19,7 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
     if cutoff > 0:
         length = cutoff
     
-    generator = np.linspace(0, 1, POSITIONS).reshape(1, -1, 1)
+    generator = torch.linspace(0, 1, POSITIONS).reshape(1, -1, 1)
 
     positions = ((solving_track.left_points.reshape(-1, 1, 2) * (1 - generator)) + (
         solving_track.right_points.reshape(-1, 1, 2) * generator
@@ -29,11 +29,11 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
     generator = None
 
     side_facing = (solving_track.right_points - solving_track.left_points)[:length]
-    side_facing = side_facing / np.linalg.norm(side_facing, axis=1, keepdims=True)
-    fwd_facing = side_facing @ np.array([[0, 1], [-1, 0]])
+    side_facing = side_facing / torch.linalg.norm(side_facing, axis=1, keepdims=True)
+    fwd_facing = side_facing @ torch.Tensor([[0, 1], [-1, 0]])
 
-    fwd_velocities = fwd_facing.reshape(length, 1, 2) * np.linspace(MAX_FWD_VELOCITY / FWD_VELOCITIES, MAX_FWD_VELOCITY, FWD_VELOCITIES).reshape(FWD_VELOCITIES, 1)
-    side_velocities = side_facing.reshape(length, 1, 2) * np.linspace(-MAX_SIDE_VELOCITY, MAX_SIDE_VELOCITY, SIDE_VELOCITIES).reshape(SIDE_VELOCITIES, 1)
+    fwd_velocities = fwd_facing.reshape(length, 1, 2) * torch.linspace(MAX_FWD_VELOCITY / FWD_VELOCITIES, MAX_FWD_VELOCITY, FWD_VELOCITIES).reshape(FWD_VELOCITIES, 1)
+    side_velocities = side_facing.reshape(length, 1, 2) * torch.linspace(-MAX_SIDE_VELOCITY, MAX_SIDE_VELOCITY, SIDE_VELOCITIES).reshape(SIDE_VELOCITIES, 1)
 
     velocities = fwd_velocities.reshape(length, FWD_VELOCITIES, 1, 2) + side_velocities.reshape(length, 1, SIDE_VELOCITIES, 2)
     assert velocities.shape == (length, FWD_VELOCITIES, SIDE_VELOCITIES, 2), fwd_velocities.shape
@@ -43,7 +43,7 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
     fwd_velocities = None
     side_velocities = None
 
-    costs = np.zeros((length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES))
+    costs = torch.zeros((length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES))
 
     physics_penalty = float("inf")
 
@@ -58,8 +58,8 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
         v_avg = v_avg.reshape(1, FWD_VELOCITIES, SIDE_VELOCITIES, 1, FWD_VELOCITIES, SIDE_VELOCITIES, 2)
 
         # Time is cost to begin with, physics constraints are added after
-        delta_pos_l = np.linalg.norm(delta_pos, axis=6, keepdims=True)
-        v_avg_l = np.linalg.norm(v_avg, axis=6, keepdims=True)
+        delta_pos_l = torch.linalg.norm(delta_pos, axis=6, keepdims=True)
+        v_avg_l = torch.linalg.norm(v_avg, axis=6, keepdims=True)
         v_avg_norm = v_avg / v_avg_l
         dot = ((delta_pos / delta_pos_l) * v_avg_norm).sum(axis=6, keepdims=True)
 
@@ -69,21 +69,21 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
 
         assert cost.shape == (POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES), cost.shape
 
-        a_avg = delta_v / cost[..., np.newaxis]
-        cost = np.where(dot > MAX_DOT, cost, physics_penalty)
+        a_avg = delta_v / cost[..., None]
+        cost = torch.where(dot > MAX_DOT, cost, physics_penalty)
 
         #### Physics Engine ####
 
         # Apply cornering constraint
-        a_avg_l = np.linalg.norm(a_avg, axis=6)
-        cost = np.where(a_avg_l <= car.cornering, cost, physics_penalty)
+        a_avg_l = torch.linalg.norm(a_avg, axis=6)
+        cost = torch.where(a_avg_l <= car.cornering, cost, physics_penalty)
 
         # Apply braking constraint
         tangential_a = (a_avg * v_avg_norm).sum(axis=6)
-        cost = np.where(tangential_a >= -car.braking, cost, physics_penalty)
+        cost = torch.where(tangential_a >= -car.braking, cost, physics_penalty)
 
         # Apply acceleration constraint
-        cost = np.where(tangential_a <= car.acceleration, cost, physics_penalty)
+        cost = torch.where(tangential_a <= car.acceleration, cost, physics_penalty)
 
         costs[i] = cost
 
@@ -91,21 +91,20 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
     # Find the best path
 
     costs = costs.reshape(length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES, -1) # Per edge
-    gradients = np.zeros((length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES), dtype=np.int_) # Edge indexes
-    accumulated_costs = np.zeros((length, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES)) # Per node
+    gradients = torch.zeros((length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES), dtype=torch.int) # Edge indexes
+    accumulated_costs = torch.zeros((length, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES)) # Per node
 
     for i in range(length - 2, -1, -1):
         full_cost = costs[i] + accumulated_costs[i + 1].reshape(-1)
 
-        gradients[i] = np.argmin(full_cost, axis=3)
-        accumulated_costs[i] = np.take_along_axis(full_cost, gradients[i, ..., np.newaxis], axis=3).squeeze(axis=3)
+        accumulated_costs[i], gradients[i] = torch.min(full_cost, axis=3)
     
     costs = None
     
-    path = np.zeros((length, 2))
-    path_indexes = np.zeros((length), dtype=np.int_)
-    path_velocities = np.zeros((length, 2))
-    path_velocity_indexes = np.zeros((length, 2), dtype=np.int_)
+    path = torch.zeros((length, 2))
+    path_indexes = torch.zeros((length), dtype=torch.int)
+    path_velocities = torch.zeros((length, 2))
+    path_velocity_indexes = torch.zeros((length, 2), dtype=torch.int)
 
     if start == "left":
         current_pos = 0
@@ -127,7 +126,7 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
     path_velocity_indexes[0, 1] = current_side_v
 
     for i in range(length - 1):
-        current_pos, current_fwd_v, current_side_v = np.unravel_index(gradients[i, current_pos, current_fwd_v, current_side_v], (POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES))
+        current_pos, current_fwd_v, current_side_v = torch.unravel_index(gradients[i, current_pos, current_fwd_v, current_side_v], (POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES))
         
         path_indexes[i + 1] = current_pos
         path_velocity_indexes[i + 1, 0] = current_fwd_v

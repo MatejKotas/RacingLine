@@ -1,6 +1,6 @@
 import json
+import torch
 from track import Track
-import numpy as np
 
 import matplotlib.pyplot as plt
 
@@ -30,10 +30,10 @@ class TrackFile:
         if not self.cyclic:
             length -= 1
 
-        data_out = np.zeros((length, self.resolution - 1, 2))
+        data_out = torch.zeros((length, self.resolution - 1, 2))
         i = 0
 
-        t = np.arange(0, 1, 1/(self.resolution - 1)).reshape(-1, 1)
+        t = torch.arange(0, 1, 1/(self.resolution - 1)).reshape(-1, 1)
         f0 = (1 - t)**3
         f1 = 3 * t * (1 - t)**2
         f2 = 3 * (1 - t) * t**2
@@ -42,10 +42,10 @@ class TrackFile:
         for i in range(length):
             _from = data_in[i]
             _to = data_in[(i + 1) % len(data_in)]
-            x0 = np.array([_from["px"], -_from["py"]])
-            x1 = np.array([_from["hrx"], -_from["hry"]])
-            x2 = np.array([_to["hlx"], -_to["hly"]])
-            x3 = np.array([_to["px"], -_to["py"]])
+            x0 = torch.tensor([_from["px"], -_from["py"]])
+            x1 = torch.tensor([_from["hrx"], -_from["hry"]])
+            x2 = torch.tensor([_to["hlx"], -_to["hly"]])
+            x3 = torch.tensor([_to["px"], -_to["py"]])
 
             data_out[i] = (x0 * f0) + (x1 * f1) + (x2 * f2) + (x3 * f3)
 
