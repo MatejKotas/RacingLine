@@ -4,7 +4,7 @@ import torch
 
 from car import Car
 
-POSITIONS = 7
+POSITIONS = 15
 FWD_VELOCITIES = 64
 SIDE_VELOCITIES = 15
 MAX_FWD_VELOCITY = 50  # meters per second
@@ -13,7 +13,8 @@ MAX_SIDE_VELOCITY = 10 # meters per second
 MAX_ANGLE = 10
 MAX_DOT = math.cos(20 / 360 * 2 * math.pi)
 
-def solve(solving_track, car: Car, start="right", cutoff=-1):
+def solve(solving_track, car: Car, device, start="right", cutoff=-1):
+    cpu = torch.device("cpu")
     length = solving_track.left_points.shape[0] # The number of checkpoints. The number of checkpoint transitions is length - 1
     
     if cutoff > 0:
@@ -23,17 +24,17 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
 
     positions = ((solving_track.left_points.reshape(-1, 1, 2) * (1 - generator)) + (
         solving_track.right_points.reshape(-1, 1, 2) * generator
-    ))[:length, ...]
+    ))[:length, ...].to(device)
     assert positions.shape == (length, POSITIONS, 2), positions.shape
 
     generator = None
 
-    side_facing = (solving_track.right_points - solving_track.left_points)[:length]
+    side_facing = (solving_track.right_points - solving_track.left_points)[:length].to(device)
     side_facing = side_facing / torch.linalg.norm(side_facing, axis=1, keepdims=True)
-    fwd_facing = side_facing @ torch.Tensor([[0, 1], [-1, 0]])
+    fwd_facing = side_facing @ torch.Tensor([[0, 1], [-1, 0]]).to(device)
 
-    fwd_velocities = fwd_facing.reshape(length, 1, 2) * torch.linspace(MAX_FWD_VELOCITY / FWD_VELOCITIES, MAX_FWD_VELOCITY, FWD_VELOCITIES).reshape(FWD_VELOCITIES, 1)
-    side_velocities = side_facing.reshape(length, 1, 2) * torch.linspace(-MAX_SIDE_VELOCITY, MAX_SIDE_VELOCITY, SIDE_VELOCITIES).reshape(SIDE_VELOCITIES, 1)
+    fwd_velocities = fwd_facing.reshape(length, 1, 2) * torch.linspace(MAX_FWD_VELOCITY / FWD_VELOCITIES, MAX_FWD_VELOCITY, FWD_VELOCITIES).reshape(FWD_VELOCITIES, 1).to(device)
+    side_velocities = side_facing.reshape(length, 1, 2) * torch.linspace(-MAX_SIDE_VELOCITY, MAX_SIDE_VELOCITY, SIDE_VELOCITIES).reshape(SIDE_VELOCITIES, 1).to(device)
 
     velocities = fwd_velocities.reshape(length, FWD_VELOCITIES, 1, 2) + side_velocities.reshape(length, 1, SIDE_VELOCITIES, 2)
     assert velocities.shape == (length, FWD_VELOCITIES, SIDE_VELOCITIES, 2), fwd_velocities.shape
@@ -43,7 +44,7 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
     fwd_velocities = None
     side_velocities = None
 
-    costs = torch.zeros((length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES))
+    costs = [0] * (length - 1)
 
     physics_penalty = float("inf")
 
@@ -85,17 +86,17 @@ def solve(solving_track, car: Car, start="right", cutoff=-1):
         # Apply acceleration constraint
         cost = torch.where(tangential_a <= car.acceleration, cost, physics_penalty)
 
-        costs[i] = cost
+        costs[i] = cost.to(cpu)
 
     print("Finishing touches...")
     # Find the best path
 
-    costs = costs.reshape(length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES, -1) # Per edge
+    #costs = costs.reshape(length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES, -1) # Per edge
     gradients = torch.zeros((length - 1, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES), dtype=torch.int) # Edge indexes
     accumulated_costs = torch.zeros((length, POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES)) # Per node
 
     for i in range(length - 2, -1, -1):
-        full_cost = costs[i] + accumulated_costs[i + 1].reshape(-1)
+        full_cost = costs[i].reshape(POSITIONS, FWD_VELOCITIES, SIDE_VELOCITIES, -1) + accumulated_costs[i + 1].reshape(-1)
 
         accumulated_costs[i], gradients[i] = torch.min(full_cost, axis=3)
     

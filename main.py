@@ -10,8 +10,9 @@ def graph(data, name):
     plt.savefig(f"figures/{ name }.png", dpi=300)
     plt.show()
 
+device = torch.device("mps") # cpu | cuda | mps
 track = TrackCollection[0].to_track()
-path, path_indexes, path_velocities, path_velocity_indexes, time = solve(track, car.base_car, start="right", cutoff=-1)
+path, path_indexes, path_velocities, path_velocity_indexes, time = solve(track, car.base_car, device, start="right", cutoff=-1)
 
 print(f"Total time: {time}")
 
