@@ -5,11 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class TrackFile:
-    def __init__(self, name, left, right, resolution): # left and right are the filepaths to the json containing the track data
+    def __init__(self, name, left, right, resolution, cyclic): # left and right are the filepaths to the json containing the track data
         self.name = name
         self.left = left
         self.right = right
         self.resolution = resolution
+        self.cyclic = cyclic
 
     # Converts bezier cuves from the json files to point lists
     def to_track(self):
@@ -18,22 +19,27 @@ class TrackFile:
         with open(self.right, "r") as f:
             right_data = json.load(f)
 
-        left_points = self.interpolate_bezier(left_data, self.resolution)
-        right_points = self.interpolate_bezier(right_data, self.resolution)
+        left_points = self.interpolate_bezier(left_data)
+        right_points = self.interpolate_bezier(right_data)
 
         return Track(self.name, left_points, right_points)
     
-    def interpolate_bezier(self, data_in, resolution):
-        data_out = np.zeros((len(data_in), resolution - 1, 2)) # Cyclic
+    def interpolate_bezier(self, data_in):
+        length = len(data_in)
+
+        if not self.cyclic:
+            length -= 1
+
+        data_out = np.zeros((length, self.resolution - 1, 2))
         i = 0
 
-        t = np.arange(0, 1, 1/(resolution - 1)).reshape(-1, 1)
+        t = np.arange(0, 1, 1/(self.resolution - 1)).reshape(-1, 1)
         f0 = (1 - t)**3
         f1 = 3 * t * (1 - t)**2
         f2 = 3 * (1 - t) * t**2
         f3 = t**3
         
-        for i in range(len(data_in)):
+        for i in range(length):
             _from = data_in[i]
             _to = data_in[(i + 1) % len(data_in)]
             x0 = np.array([_from["px"], -_from["py"]])
@@ -46,9 +52,17 @@ class TrackFile:
         return data_out.reshape(-1, 2)
 
 TrackCollection = [
-    TrackFile(
-        "WeatherTech Raceway Laguna Seca", 
-        "tracks/laguna_seca/left.json", 
-        "tracks/laguna_seca/right.json",
-        48)
+        TrackFile(
+            "WeatherTech Raceway Laguna Seca", 
+            "tracks/laguna_seca/left.json", 
+            "tracks/laguna_seca/right.json",
+            3, # Was 48
+            True),
+        TrackFile(
+            "Straight",
+            "tracks/straight/left.json",
+            "tracks/straight/right.json",
+            10,
+            False
+        ),
     ]
