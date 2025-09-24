@@ -30,10 +30,10 @@ class TrackFile:
         if not self.cyclic:
             length -= 1
 
-        data_out = torch.zeros((length, self.resolution - 1, 2))
+        data_out = torch.zeros((length, self.resolution, 2))
         i = 0
 
-        t = torch.arange(0, 1, 1/(self.resolution - 1)).reshape(-1, 1)
+        t = torch.arange(0, 1, 1/(self.resolution)).reshape(-1, 1)
         f0 = (1 - t)**3
         f1 = 3 * t * (1 - t)**2
         f2 = 3 * (1 - t) * t**2
