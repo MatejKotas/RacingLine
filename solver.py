@@ -62,9 +62,13 @@ def solve(solving_track, car: Car, device, start="right", cutoff=-1):
         delta_pos_l = torch.linalg.norm(delta_pos, axis=6, keepdims=True)
         v_avg_l = torch.linalg.norm(v_avg, axis=6, keepdims=True)
         v_avg_norm = v_avg / v_avg_l
+        v_avg = None
         dot = ((delta_pos / delta_pos_l) * v_avg_norm).sum(axis=6, keepdims=True)
 
+        delta_pos = None
+
         cost = delta_pos_l / v_avg_l / dot
+        delta_pos_l, a_avg_l = None, None
         cost = cost.squeeze(axis=6)
         dot = dot.squeeze(axis=6)
 
@@ -72,6 +76,9 @@ def solve(solving_track, car: Car, device, start="right", cutoff=-1):
 
         a_avg = delta_v / cost[..., None]
         cost = torch.where(dot > MAX_DOT, cost, physics_penalty)
+        dot = None
+
+        delta_v = None
 
         #### Physics Engine ####
 
@@ -82,6 +89,7 @@ def solve(solving_track, car: Car, device, start="right", cutoff=-1):
         # Apply braking constraint
         tangential_a = (a_avg * v_avg_norm).sum(axis=6)
         cost = torch.where(tangential_a >= -car.braking, cost, physics_penalty)
+        v_avg_norm = None
 
         # Apply acceleration constraint
         cost = torch.where(tangential_a <= car.acceleration, cost, physics_penalty)
