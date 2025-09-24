@@ -56,7 +56,7 @@ TrackCollection = [
             "WeatherTech Raceway Laguna Seca", 
             "tracks/laguna_seca/left.json", 
             "tracks/laguna_seca/right.json",
-            3, # Was 48
+            1, # Was 48
             True),
         TrackFile(
             "Straight",
